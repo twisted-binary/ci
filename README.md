@@ -63,6 +63,8 @@ jobs:
 
 Runs `npm ci`, then each of `format:check`, `lint:check`, `check`, `typecheck`, `test` that the site defines, then `npm run build`. With `output-dir`, it checks the output has an `index.html` with a `<title>` and a `sitemap*.xml`.
 
+Server-rendered sites (Nuxt `nuxt build`, Next) pass `serve-command` instead, e.g. `node .output/server/index.mjs` or `npm start`. The workflow starts it on port 4381 (`PORT`/`HOST` set) and requests each of `smoke-paths` (default `/ /sitemap.xml /robots.txt`): every path must return 200 after redirects, and HTML pages must have a `<title>`.
+
 ## Security — `.github/workflows/security.yml`
 
 ```yaml

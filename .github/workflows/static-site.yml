@@ -26,6 +26,14 @@ on:
         description: Fail the smoke check when the output has no sitemap*.xml.
         type: boolean
         default: true
+      serve-command:
+        description: For server-rendered sites, the command that starts the built server (it must honor PORT). Empty skips the server smoke check.
+        type: string
+        default: ''
+      smoke-paths:
+        description: Space-separated paths the server smoke check requests. Each must return 200; HTML pages must have a <title>.
+        type: string
+        default: / /sitemap.xml /robots.txt
 
 permissions:
   contents: read
@@ -88,3 +96,27 @@ jobs:
           if [ "$EXPECT_SITEMAP" = "true" ]; then
             ls "$OUT"/sitemap*.xml >/dev/null 2>&1 || { echo "::error::no sitemap*.xml in $OUT"; exit 1; }
           fi
+
+      - name: Smoke-check server
+        if: inputs.serve-command != ''
+        env:
+          SERVE: ${{ inputs.serve-command }}
+          SMOKE_PATHS: ${{ inputs.smoke-paths }}
+          PORT: '4381'
+          HOST: 127.0.0.1
+        run: |
+          bash -c "$SERVE" > "$RUNNER_TEMP/server.log" 2>&1 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null; pkill -P $pid 2>/dev/null; true' EXIT
+          for _ in $(seq 1 60); do curl -s -o /dev/null "http://127.0.0.1:$PORT/" && break; sleep 1; done
+          rc=0
+          for p in $SMOKE_PATHS; do
+            out=$(curl -sL -o "$RUNNER_TEMP/page" -w '%{http_code} %{content_type}' "http://127.0.0.1:$PORT$p")
+            code=${out%% *}; ctype=${out#* }; ok=true
+            [ "$code" = 200 ] || ok=false
+            case "$ctype" in text/html*) grep -qi '<title>[^<]\+</title>' "$RUNNER_TEMP/page" || ok=false ;; esac
+            echo "$p -> $code $ctype"
+            $ok || { echo "::error::$p failed the smoke check"; rc=1; }
+          done
+          if [ $rc != 0 ]; then echo "--- server log"; tail -50 "$RUNNER_TEMP/server.log"; fi
+          exit $rc
