@@ -1,0 +1,59 @@
+# Shared dependency audit. Reads only the lockfiles (no install), so it is fast.
+# Fails on production dependencies with a high/critical npm advisory or any composer advisory.
+name: security
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: JSON runner labels.
+        type: string
+        default: '["self-hosted", "mini23"]'
+      php-version:
+        type: string
+        default: '8.5'
+      node-version:
+        type: string
+        default: '24'
+      npm-audit-level:
+        type: string
+        default: high
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Detect lockfiles
+        id: locks
+        run: |
+          echo "composer=$([ -f composer.lock ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "npm=$([ -f package-lock.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - if: steps.locks.outputs.composer == 'true'
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ inputs.php-version }}
+          tools: composer:v2
+          coverage: none
+
+      - name: Composer audit
+        if: steps.locks.outputs.composer == 'true'
+        run: composer audit --locked --no-dev
+
+      - if: steps.locks.outputs.npm == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: npm audit
+        if: steps.locks.outputs.npm == 'true'
+        env:
+          LEVEL: ${{ inputs.npm-audit-level }}
+        run: npm audit --omit=dev --audit-level="$LEVEL"

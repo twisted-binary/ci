@@ -1,0 +1,15 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Static sites: shared defaults, plus patch updates merge themselves once CI is green",
+  "extends": ["github>twisted-binary/ci"],
+  "packageRules": [
+    {
+      "description": "Patch updates in their own group, merged by Renovate after all checks pass",
+      "matchUpdateTypes": ["patch"],
+      "matchCurrentVersion": "!/^v?0\\./",
+      "groupName": "patch dependencies",
+      "groupSlug": "patch",
+      "automerge": true
+    }
+  ]
+}

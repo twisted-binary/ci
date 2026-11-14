@@ -1,0 +1,90 @@
+# Shared CI for static / frontend sites (Astro, Nuxt, Next). Callers: see README.md.
+#
+# Runs, in order, each of these npm scripts that the site defines (check mode only):
+#   format:check, lint:check, check (e.g. astro check), typecheck, test
+# then `npm run <build-script>`, then an optional smoke check of the built output.
+name: static-site
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        type: string
+        default: '24'
+      runs-on:
+        description: JSON runner labels.
+        type: string
+        default: '["self-hosted", "mini23"]'
+      build-script:
+        type: string
+        default: build
+      output-dir:
+        description: Built site directory to smoke-check (e.g. dist, .output/public). Empty skips the check.
+        type: string
+        default: ''
+      expect-sitemap:
+        description: Fail the smoke check when the output has no sitemap*.xml.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ fromJSON(inputs.runs-on) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Detect scripts
+        id: scripts
+        run: echo "list=$(jq -c '.scripts // {} | keys' package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Format
+        if: contains(fromJSON(steps.scripts.outputs.list), 'format:check')
+        run: npm run format:check
+
+      - name: Lint
+        if: contains(fromJSON(steps.scripts.outputs.list), 'lint:check')
+        run: npm run lint:check
+
+      - name: Check
+        if: contains(fromJSON(steps.scripts.outputs.list), 'check')
+        run: npm run check
+
+      - name: Types
+        if: contains(fromJSON(steps.scripts.outputs.list), 'typecheck')
+        run: npm run typecheck
+
+      - name: Tests
+        if: contains(fromJSON(steps.scripts.outputs.list), 'test')
+        run: npm test
+
+      - name: Build
+        env:
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+        run: npm run "$BUILD_SCRIPT"
+
+      - name: Smoke-check output
+        if: inputs.output-dir != ''
+        env:
+          OUT: ${{ inputs.output-dir }}
+          EXPECT_SITEMAP: ${{ inputs.expect-sitemap }}
+        run: |
+          test -f "$OUT/index.html" || { echo "::error::$OUT/index.html missing"; exit 1; }
+          grep -qi '<title>[^<]\+</title>' "$OUT/index.html" || { echo "::error::$OUT/index.html has no <title>"; exit 1; }
+          pages=$(find "$OUT" -name '*.html' | wc -l)
+          echo "Built $pages HTML pages."
+          if [ "$EXPECT_SITEMAP" = "true" ]; then
+            ls "$OUT"/sitemap*.xml >/dev/null 2>&1 || { echo "::error::no sitemap*.xml in $OUT"; exit 1; }
+          fi
