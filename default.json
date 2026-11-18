@@ -20,6 +20,11 @@
   },
   "packageRules": [
     {
+      "description": "Lock file maintenance has no release timestamp, so the age gate would hold it forever (Renovate 42+)",
+      "matchUpdateTypes": ["lockFileMaintenance"],
+      "minimumReleaseAge": null
+    },
+    {
       "description": "One weekly PR for all minor and patch updates (0.x minors can break, so they stay separate)",
       "matchUpdateTypes": ["minor", "patch"],
       "matchCurrentVersion": "!/^v?0\\./",
